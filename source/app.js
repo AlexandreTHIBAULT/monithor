@@ -1,8 +1,10 @@
 import express from "express";
 import si from "systeminformation";
-import os from "os";
+import dotenv from "dotenv";
 
 const app = express();
+
+dotenv.config({path: '../.env'})
 
 const PORT = process.env.PORT;
 const UPDATE_TIME = process.env.UPDATE_TIME;
