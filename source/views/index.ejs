@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Cascadia+Code">
+
+    <title>Monithor</title>
+
+    <style>
+        :root {
+            --bg-dark: hsl(319 100% 3%);
+            --bg: hsl(315 100% 5%);
+            --bg-light: hsl(314 100% 8%);
+            --text: hsl(321 100% 99%);
+            --text-muted: hsl(320 50% 73%);
+            --highlight: hsl(314 72% 38%);
+            --border: hsl(311 100% 21%);
+            --border-muted: hsl(311 100% 13%);
+            --primary: hsl(317 100% 73%);
+            --secondary: hsl(163 100% 28%);
+            --danger: hsl(7 100% 66%);
+            --warning: hsl(53 100% 21%);
+            --success: hsl(162 100% 22%);
+            --info: hsl(217 100% 70%);
+
+            --gradient: linear-gradient(180deg, var(--bg-light), var(--bg) 1em);
+            --shadow: 0px 2px 2px oklch(0 0 0 / 0.2), 0px 4px 4px oklch(0 0 0 / 0.1);
+        }
+
+        body {
+            color: var(--text);
+            background-color: var(--bg-dark);
+            font-family: "Cascadia Code";
+        }
+
+        #title {
+            margin: 0 2em 2em 2em;
+        }
+
+        #distro {
+            color: var(--text-muted);
+        }
+
+        .element {
+            display: flex;
+            justify-content: space-between;
+            background: var(--gradient);
+            border: solid 1px var(--border-muted);
+            border-top: 1px solid var(--border);
+            border-radius: 1rem;
+            margin: 1em;
+            padding: 2em;
+            box-shadow: var(--shadow);
+        }
+
+        .element-title {
+            width: 30%;
+            margin-right: 2em;
+        }
+
+        .element-label {
+            color: var(--text-muted);
+        }
+
+        .graph {
+            background: linear-gradient(var(--text-muted), var(--bg));
+            height: 20%;
+            width: 100%;
+        }
+
+        .disk {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            margin: 2em 0;
+            align-items: center;
+        }
+
+        .disk-label-name {
+            margin: 0;
+            margin-right: 0.5em;
+        }
+
+        .disk-label-desc {
+            color: var(--text-muted);
+            margin: 0;
+            margin-right: 0.5em;
+        }
+
+        .bar-outline {
+            width: 50%;
+            height: 20px;
+            border: solid 1px var(--border-muted);
+            border-radius: 1rem;
+        }
+
+        .bar-inside {
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--bg), var(--text-muted) 200%);
+            border-right: solid 1px var(--text-muted);
+            border-radius: 1rem;
+        }
+
+        #disk-element {
+            display: block;
+        }
+    </style>
+
+</head>
+<body>
+    <div id="title">
+        <h1 id="hostname"></h1>
+        <p id="distro"></p>
+        <p id="uptime"></p>
+    </div>
+
+    <div class="element" id="disk-element">
+        <h2>Disks</h2>
+        <div class="disk">
+            <div class="disk-label">
+                <p class="disk-label-name">-</p>
+                <p class="disk-label-desc">-</p>
+            </div>
+            <div class="bar-outline">
+                <div class="bar-inside"></div>
+            </div>
+        </div>
+        
+    </div>
+
+    <div class="element">
+        <div class="element-title">
+            <h2>CPU</h2>
+            <p id="cpu" class="element-label"></p>
+        </div>
+        <canvas id="cpu-graph" class="graph" width="5000%" height="1000%"></canvas>
+    </div>
+
+    <div class="element">
+        <div class="element-title">
+            <h2>Memory</h2>
+            <p id="memory" class="element-label"></p>
+        </div>
+        <canvas id="mem-graph" class="graph" width="5000%" height="1000%"></canvas>
+    </div>
+
+</body>
+
+<script src="jquery-3.7.1.min.js"></script>
+<script>
+    const cpu_canvas = document.getElementById("cpu-graph");
+    const mem_canvas = document.getElementById("mem-graph");
+
+    const update_delay = "<%= update_time %>";
+
+    var disk = $(".disk"); //
+    disk.remove();
+
+    cpu_graph_data = {
+        ctx: cpu_canvas.getContext("2d"),
+        graph: Array(101).fill(0),
+        h: cpu_canvas.height,
+        w: cpu_canvas.width,
+    };
+
+    mem_graph_data = {
+        ctx: mem_canvas.getContext("2d"),
+        graph: Array(101).fill(0),
+        h: mem_canvas.height,
+        w: mem_canvas.width,
+    };
+
+    $.get(`/osinfo`, function (data) {
+        console.log(data)
+        $("#hostname").html(data.hostname)
+        $("#distro").html(`${data.distro} - ${data.release}`)
+    });
+
+    $.get(`/disk`, function (data) {
+        data.forEach(element => {
+            var d = disk.clone();
+            d.children(".disk-label").children(".disk-label-name").html(`${element.name}`)
+            d.children(".disk-label").children(".disk-label-desc").html(`${element.used} / ${element.size} - ${element.usedPct} %`)
+            d.children(".bar-outline").children(".bar-inside").css("width", `${element.usedPct}%`)
+            d.appendTo("#disk-element");
+        });
+    });
+
+    (function updateCPU() {
+        $.get(`/cpu`, function (data) {
+            $("#cpu").html(`${data.currentLoad} %`)
+            cpu_graph_data.graph.pop();
+            cpu_graph_data.graph.unshift(data.currentLoadGraph);
+            printGraph(cpu_graph_data);
+            setTimeout(updateCPU, update_delay);
+        });
+    })();
+
+    (function updateMem() {
+        $.get(`/mem`, function (data) {
+            $("#memory").html(`${data.active} / ${data.total}`)
+            mem_graph_data.graph.pop();
+            mem_graph_data.graph.unshift(data.activeGraph);
+            printGraph(mem_graph_data);
+            setTimeout(updateMem, update_delay);
+        });
+    })();
+
+    (function updateUptime() {
+        $.get(`/uptime`, function (data) {
+            $("#uptime").html(`Uptime: ${data.day} days, ${data.hour} hours, ${data.minute} minutes`)
+            setTimeout(updateUptime, 1000);
+        });
+    })();
+
+    function printGraph(graph_data){
+        var i = 0
+        
+        graph_data.ctx.clearRect(0, 0, graph_data.w, graph_data.h);
+
+        graph_data.ctx.beginPath();
+        graph_data.ctx.moveTo(graph_data.w, graph_data.h);
+        graph_data.ctx.lineWidth = 20;
+        graph_data.graph.forEach(e => {
+            graph_data.ctx.lineTo(Math.round(graph_data.w-(i*graph_data.w/100)), Math.round(graph_data.h-(e*graph_data.h/100)));
+            //graph_data.ctx.stroke();
+            i++;
+        });
+        graph_data.ctx.lineTo(0, graph_data.h);
+        
+        graph_data.ctx.strokeStyle = getCSSprop('--text-muted');
+        graph_data.ctx.stroke();
+        
+        graph_data.ctx.lineTo(0, 0);
+        graph_data.ctx.lineTo(graph_data.w, 0);
+        graph_data.ctx.fillStyle = getCSSprop('--bg');
+        graph_data.ctx.fill();
+
+        graph_data.ctx.beginPath();
+        graph_data.ctx.moveTo(graph_data.w, graph_data.h);
+
+        graph_data.ctx.lineTo(0, graph_data.h);
+        graph_data.ctx.lineTo(0, 0);
+        graph_data.ctx.strokeStyle = getCSSprop('--text-muted');
+        graph_data.ctx.stroke();
+    }
+
+    function getCSSprop(css_var) {
+        return window.getComputedStyle(document.body)
+            .getPropertyValue(css_var);
+    }
+
+</script>
+
+</html>
